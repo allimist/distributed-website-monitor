@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Distributed Website Monitor</title>
+<style>
+:root{font-family:Inter,system-ui,sans-serif;color:#111827;background:#f3f4f6}body{margin:0}.wrap{max-width:1100px;margin:40px auto;padding:0 20px}.top{display:flex;justify-content:space-between;align-items:center;gap:20px}.card{background:#fff;border-radius:16px;padding:20px;box-shadow:0 8px 24px rgba(0,0,0,.06)}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:24px 0}.stat strong{display:block;font-size:28px;margin-top:4px}.form{display:flex;gap:10px}.form input{flex:1;padding:12px;border:1px solid #d1d5db;border-radius:10px}.btn{border:0;border-radius:10px;padding:11px 15px;cursor:pointer;background:#111827;color:white}.btn.alt{background:#e5e7eb;color:#111827}.btn.danger{background:#fee2e2;color:#991b1b}.table{margin-top:20px;overflow:auto}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px;border-bottom:1px solid #eee}th{font-size:12px;text-transform:uppercase;color:#6b7280}.pill{padding:5px 9px;border-radius:999px;font-size:12px;font-weight:700}.ok{background:#dcfce7;color:#166534}.bad{background:#fee2e2;color:#991b1b}.unknown{background:#e5e7eb;color:#4b5563}.actions{display:flex;gap:7px}.muted{color:#6b7280}.title{margin:0;font-size:30px}.subtitle{margin-top:6px;color:#6b7280}@media(max-width:800px){.stats{grid-template-columns:repeat(2,1fr)}.top{align-items:flex-start;flex-direction:column}} 
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div><h1 class="title">Distributed Website Monitor</h1><div class="subtitle">Queue-based monitoring with Redis, BullMQ and scalable workers</div></div>
+    <button class="btn" onclick="checkAll()">Check all websites</button>
+  </div>
+  <div class="stats">
+    <div class="card stat"><span class="muted">Websites</span><strong id="total">0</strong></div>
+    <div class="card stat"><span class="muted">Online</span><strong id="online">0</strong></div>
+    <div class="card stat"><span class="muted">Offline</span><strong id="offline">0</strong></div>
+    <div class="card stat"><span class="muted">Avg response</span><strong><span id="avg">0</span> ms</strong></div>
+  </div>
+  <div class="card">
+    <form class="form" onsubmit="addWebsite(event)">
+      <input id="url" type="url" required placeholder="https://example.com" />
+      <button class="btn" type="submit">Add website</button>
+    </form>
+    <div class="table"><table><thead><tr><th>Website</th><th>Status</th><th>HTTP</th><th>Response</th><th>Last checked</th><th>Actions</th></tr></thead><tbody id="rows"></tbody></table></div>
+  </div>
+</div>
+<script>
+async function api(path, opts={}){const r=await fetch(path,{headers:{'content-type':'application/json'},...opts});if(!r.ok&&r.status!==204){throw new Error((await r.json().catch(()=>({}))).error||r.statusText)}return r.status===204?null:r.json()}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function refresh(){const [sites,stats]=await Promise.all([api('/api/websites'),api('/api/stats')]);total.textContent=stats.total;online.textContent=stats.online;offline.textContent=stats.offline;avg.textContent=stats.avg_response_ms;rows.innerHTML=sites.map(s=>`<tr><td><strong>${esc(s.url)}</strong>${s.last_error?`<div class="muted">${esc(s.last_error)}</div>`:''}</td><td>${s.last_checked_at?`<span class="pill ${s.last_ok?'ok':'bad'}">${s.last_ok?'ONLINE':'OFFLINE'}</span>`:'<span class="pill unknown">NOT CHECKED</span>'}</td><td>${s.last_status_code??'—'}</td><td>${s.last_response_time_ms!=null?s.last_response_time_ms+' ms':'—'}</td><td>${s.last_checked_at?new Date(s.last_checked_at).toLocaleString():'—'}</td><td><div class="actions"><button class="btn alt" onclick="checkOne(${s.id})">Check</button><button class="btn danger" onclick="removeSite(${s.id})">Delete</button></div></td></tr>`).join('')}
+async function addWebsite(e){e.preventDefault();try{await api('/api/websites',{method:'POST',body:JSON.stringify({url:url.value})});url.value='';await refresh()}catch(e){alert(e.message)}}
+async function checkOne(id){await api('/api/check/'+id,{method:'POST'});setTimeout(refresh,1200)}
+async function checkAll(){await api('/api/check-all',{method:'POST'});setTimeout(refresh,1500)}
+async function removeSite(id){await api('/api/websites/'+id,{method:'DELETE'});await refresh()}
+refresh();setInterval(refresh,5000)
+</script>
+</body>
+</html>
